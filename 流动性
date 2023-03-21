@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract MaoLiangChef {
+    IERC20 public MiMiToken;
+    IERC20 public MaoTiaoToken;
+    mapping(address => uint) public MiMiBalances;
+    mapping(address => uint) public MaoTiaoBalances;
+    uint public totalMiMi;
+    uint public totalMaoTiao;
+    uint public totalShares;
+    mapping(address => uint) public shares;
+
+    constructor(address _MiMiToken, address _MaoTiaoToken) {
+        MiMiToken = IERC20(_MiMiToken);
+        MaoTiaoToken = IERC20(_MaoTiaoToken);
+    }
+
+    function addMaoLiang(uint256 MiMiAmount, uint256 MaoTiaoAmount) external {
+        require(MiMiAmount > 0 && MaoTiaoAmount > 0, "Invalid MaoLiang amount");
+        MiMiToken.transferFrom(msg.sender, address(this), MiMiAmount);
+        MaoTiaoToken.transferFrom(msg.sender, address(this), MaoTiaoAmount);
+        MiMiBalances[msg.sender] += MiMiAmount;
+        MaoTiaoBalances[msg.sender] += MaoTiaoAmount;
+        totalMiMi += MiMiAmount;
+        totalMaoTiao += MaoTiaoAmount;
+        uint share = 0;
+        if (totalShares == 0) {
+            share = sqrt(MiMiAmount * MaoTiaoAmount);
+        } else {
+            share = (sqrt(MiMiAmount * MaoTiaoAmount) * totalShares) / sqrt(totalMiMi * totalMaoTiao);
+        }
+        shares[msg.sender] += share;
+        totalShares += share;
+    }
+
+    function removeMaoLiang(uint share) external {
+        require(share > 0 && shares[msg.sender] >= share, "Invalid share amount");
+        uint MiMiAmount = (share * totalMiMi) / totalShares;
+        uint MaoTiaoAmount = (share * totalMaoTiao) / totalShares;
+        MiMiBalances[msg.sender] -= MiMiAmount;
+        MaoTiaoBalances[msg.sender] -= MaoTiaoAmount;
+        totalMiMi -= MiMiAmount;
+        totalMaoTiao -= MaoTiaoAmount;
+        shares[msg.sender] -= share;
+        totalShares -= share;
+        MiMiToken.transfer(msg.sender, MiMiAmount);
+        MaoTiaoToken.transfer(msg.sender, MaoTiaoAmount);
+    }
+
+    function getReward() external {
+        uint MiMiBalance = MiMiToken.balanceOf(address(this));
+        uint MaoTiaoBalance = MaoTiaoToken.balanceOf(address(this));
+        uint MiMiReward = (MiMiBalance * totalShares) / totalMiMi;
+        uint MaoTiaoReward = (MaoTiaoBalance * totalShares) / totalMaoTiao;
+        for (uint256 account = 0; account < totalShares; account++) {
+            address accountAddress = address(uint160(account));
+            uint share = shares[accountAddress];
+            uint MiMiAmount = (share * MiMiReward) / totalShares;
+            uint MaoTiaoAmount = (share * MaoTiaoReward) / totalShares;
+            MiMiToken.transfer(accountAddress, MiMiAmount);
+            MaoTiaoToken.transfer(accountAddress, MaoTiaoAmount);
+        }
+    }
+
+    function sqrt(uint x) internal pure returns (uint y) {
+        uint z = (x + 1) / 2;
+        y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        }
+    }
+}
